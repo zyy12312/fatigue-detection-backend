@@ -26,13 +26,11 @@ class UserRole(Enum):
     ADMIN = 'Admin'
 
 
-class CourseSelectionType(Enum):
-    SELF_SELECT = 'SelfSelect'  # 自选
-    TEACHER_SELECT = 'TeacherSelect'  # 教师选课
-    ADMIN_SELECT = 'AdminSelect'  # 管理员选课
-    AS_TEACHER = 'AsTeacher'  # 作为教师选课
-
-
+# class CourseSelectionType(Enum):
+#     SELF_SELECT = 'SelfSelect'  # 自选
+#     TEACHER_SELECT = 'TeacherSelect'  # 教师选课
+#     ADMIN_SELECT = 'AdminSelect'  # 管理员选课
+#     AS_TEACHER = 'AsTeacher'  # 作为教师选课
 class BaseModel(object):
     @classmethod
     def _get_collection(cls):
@@ -78,6 +76,22 @@ class BaseModel(object):
             data_list = list(mongo.db[cls.__name__.lower()].find().skip(skip))
         else:
             data_list = list(mongo.db[cls.__name__.lower()].find().limit(limit).skip(skip))
+        return [cls(**data) for data in data_list]
+
+    @classmethod
+    def query(cls, query, limit=0, skip=0):
+        mongo = PyMongo(app)
+        if limit == 0:
+            data_list = list(mongo.db[cls.__name__.lower()].find(query).skip(skip))
+        else:
+            data_list = list(mongo.db[cls.__name__.lower()].find(query).limit(limit).skip(skip))
+        return [cls(**data) for data in data_list]
+
+    @classmethod
+    def aggregate(cls, pipeline):
+        mongo = PyMongo(app)
+        data_list = list(mongo.db[cls.__name__.lower()].aggregate(pipeline))
+        print(data_list)
         return [cls(**data) for data in data_list]
 
     def dict(self):
@@ -157,13 +171,34 @@ class CourseSelection(BaseModel):
         self.course_id = course_id
         self.user_id = user_id
         self.selection_type = selection_type
-        self.user = User.find_by_id(user_id)
-        self.course = Course.find_by_id(course_id)
+
+    def dict(self):
+        data = super().dict()
+        data["course"] = self.course.dict()
+        data["user"] = self.user.dict()
+        return data
+
+    @property
+    def course(self):
+        course = Course.find_by_id(self.course_id)
+        if course is None:
+            return None
+        return course
+
+    @property
+    def user(self):
+        user = User.find_by_id(self.user_id)
+        if user is None:
+            return None
+        del user.password
+        del user.salt
+        return user
 
     @classmethod
     def _get_collection(cls):
         course_selection_collection = super()._get_collection()
-        course_selection_collection.create_index([("course_id", 1), ("user_id", 1)], name="course_id_user_id_index")
+        course_selection_collection.create_index([("course_id", 1), ("user_id", 1)], name="course_id_user_id_index",
+                                                 unique=True)
         course_selection_collection.create_index("course_id", name="course_id_index", background=True)
         course_selection_collection.create_index("user_id", name="user_id_index", background=True)
         course_selection_collection.create_index("selection_type", name="selection_type_index", background=True)
@@ -172,6 +207,7 @@ class CourseSelection(BaseModel):
     @classmethod
     def find_by_course_id(cls, course_id, limit=0, skip=0):
         course_selection_collection = cls._get_collection()
+        course_id = str(course_id)
         if limit > 0:
             course_selection_data = course_selection_collection.find({"course_id": course_id}).limit(limit).skip(skip)
         else:
@@ -181,6 +217,7 @@ class CourseSelection(BaseModel):
     @classmethod
     def find_by_user_id(cls, user_id, limit=0, skip=0):
         course_selection_collection = cls._get_collection()
+        user_id = str(user_id)
         if limit > 0:
             course_selection_data = course_selection_collection.find({"user_id": user_id}).limit(limit).skip(skip)
         else:
@@ -190,35 +227,25 @@ class CourseSelection(BaseModel):
 
 class Course(BaseModel):
 
-    def __init__(self, _id=None, course_id=None, course_name=None, description=None,
+    def __init__(self, _id=None, course_name=None, description=None,
                  **kwargs):
         super().__init__(_id=_id, **kwargs)
         self._get_collection()
-        self.course_id = course_id
         self.course_name = course_name
         self.description = description
 
     @classmethod
     def _get_collection(cls):
         course_collection = super()._get_collection()
-        course_collection.create_index("course_id", name="course_id_index", unique=True)
         course_collection.create_index("course_name", name="course_name_index", unique=True)
         return course_collection
-
-    @classmethod
-    def find_by_course_id(cls, course_id):
-        course_collection = Course._get_collection()
-        course_data = course_collection.find_one({"course_id": course_id})
-        if course_data is None:
-            return None
-        return Course(**course_data)
 
     @classmethod
     def get_teachers(cls, course_id):
         course_selections = CourseSelection.find_by_course_id(course_id)
         result = []
         for course_selection in course_selections:
-            if course_selection.selection_type == CourseSelectionType.AS_TEACHER.value:
+            if course_selection.selection_type == 'AS_TEACHER':
                 result.append(course_selection.user)
         return result
 
@@ -227,9 +254,130 @@ class Course(BaseModel):
         course_selections = CourseSelection.find_by_course_id(course_id)
         result = []
         for course_selection in course_selections:
-            if course_selection.selection_type != CourseSelectionType.AS_TEACHER.value:
+            if course_selection.selection_type != "AS_TEACHER":
                 result.append(course_selection.user)
         return result
+
+
+class SubRecord(BaseModel):  # 学生听课记录
+    record_id: str
+    student_id: str
+    start_time: int
+    end_time: int
+    detail: dict
+
+    def __init__(self, _id=None, record_id=None, student_id=None, start_time=None, end_time=None, detail=None,
+                 **kwargs):
+        super().__init__(_id=_id, **kwargs)
+        self._get_collection()
+        self.record_id = record_id
+        self.student_id = student_id
+        self.start_time = start_time
+        self.end_time = end_time
+        self.detail = detail
+
+    def dict(self):
+        data = super().dict()
+        data["student"] = self.student.dict() if self.student is not None else None
+        data["record"] = self.record.dict() if self.record is not None else None
+        return data
+
+    @property
+    def student(self):
+        student = User.find_by_id(self.student_id)
+        if student is None:
+            return None
+        del student.password
+        del student.salt
+        return student
+
+    @property
+    def record(self):
+        record = Record.find_by_id(self.record_id)
+        if record is None:
+            return None
+        return record
+
+    @classmethod
+    def _get_collection(cls):
+        sub_record_collection = super()._get_collection()
+        sub_record_collection.create_index("record_id", name="record_id_index", background=True)
+        sub_record_collection.create_index("student_id", name="student_id_index", background=True)
+        return sub_record_collection
+
+    @classmethod
+    def find_by_record_id(cls, record_id, limit=0, skip=0):
+        sub_record_collection = cls._get_collection()
+        if limit > 0:
+            sub_record_data = sub_record_collection.find({"record_id": record_id}).limit(limit).skip(skip)
+        else:
+            sub_record_data = sub_record_collection.find({"record_id": record_id}).skip(skip)
+        return [SubRecord(**data) for data in sub_record_data]
+
+    @classmethod
+    def find_by_student_id(cls, student_id, limit=0, skip=0):
+        sub_record_collection = cls._get_collection()
+        if limit > 0:
+            sub_record_data = sub_record_collection.find({"student_id": student_id}).limit(limit).skip(skip)
+        else:
+            sub_record_data = sub_record_collection.find({"student_id": student_id}).skip(skip)
+        return [SubRecord(**data) for data in sub_record_data]
+
+
+class Record(BaseModel):  # 上课记录，
+    course_id: str
+    teacher_id: str
+    start_time: int
+    end_time: int
+    status: int  # 0:未开始，1：进行中，2：已结束
+
+    def __init__(self, _id=None, course_id=None, teacher_id=None, start_time=None, end_time=None, status=None,
+                 **kwargs):
+        super().__init__(_id=_id, **kwargs)
+        self._get_collection()
+        self.course_id = course_id
+        self.teacher_id = teacher_id
+        self.start_time = start_time
+        self.end_time = end_time
+        self.status = status
+
+    def dict(self):
+        data = super().dict()
+        data["course"] = self.course.dict()
+        data["teacher"] = self.teacher.dict()
+        return data
+
+    @property
+    def course(self):
+        course = Course.find_by_id(self.course_id)
+        if course is None:
+            return None
+        return course
+
+    @property
+    def teacher(self):
+        teacher = User.find_by_id(self.teacher_id)
+        if teacher is None:
+            return None
+        del teacher.password
+        del teacher.salt
+        return teacher
+
+    @classmethod
+    def _get_collection(cls):
+        record_collection = super()._get_collection()
+        record_collection.create_index("course_id", name="course_id_index", background=True)
+        record_collection.create_index("teacher_id", name="teacher_id_index", background=True)
+        return record_collection
+
+    @classmethod
+    def find_by_course_id(cls, course_id, limit=0, skip=0):
+        record_collection = cls._get_collection()
+        if limit > 0:
+            record_data = record_collection.find({"course_id": course_id}).limit(limit).skip(skip)
+        else:
+            record_data = record_collection.find({"course_id": course_id}).skip(skip)
+        return [Record(**data) for data in record_data]
 
 
 class Token:

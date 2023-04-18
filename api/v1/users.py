@@ -9,7 +9,7 @@ Describe:
 import re
 
 from flask_restx import Namespace, Resource
-from api import APIBaseResponseSchema
+from . import APIBaseResponseSchema
 from config import USERNAME_PATTERN, PASSWORD_PATTERN, EMAIL_PATTERN
 from exceptions import UserAlreadyExistsException, BadRequestException
 from .helpers.auth import need_login, has_role
@@ -28,10 +28,13 @@ class APIUserRequestSchema(object):
     password: str
 
 
-user_namespace = Namespace('users', description='Users')
+user_namespace = Namespace(path='/users', name='Users', description='Operations related to users')
 
 
 @user_namespace.route('/login')
+@user_namespace.doc(
+    description='Login by username and password',
+)
 class Login(Resource):
     @validate_args({
         'username': (str, ...),
@@ -57,6 +60,7 @@ class Login(Resource):
 @user_namespace.route('/user', methods=['POST', 'PUT', 'DELETE', 'GET'])
 class UserInfo(Resource):
 
+    @user_namespace.doc(description='Get user info by username or _id')
     @has_role('admin')
     @validate_args({
         'username': (str, None),
@@ -90,6 +94,7 @@ class UserInfo(Resource):
             'data': user.dict()
         }
 
+    @user_namespace.doc(description='Create a new user')
     @has_role('admin')
     @validate_args({
         'username': (str, ...),
@@ -99,7 +104,7 @@ class UserInfo(Resource):
         'employee_id': (str, None),
         'name': (str, None),
         'college': (str, None),
-        'roles': (str, None),
+        'roles': (list, None),
     }, location='json')
     def post(self, user, data):
         username = data.get('username')
@@ -144,6 +149,7 @@ class UserInfo(Resource):
             'data': user.dict()
         }
 
+    @user_namespace.doc(description='Update user info')
     @has_role('admin')
     @validate_args({
         'id': (str, ...),
@@ -153,7 +159,7 @@ class UserInfo(Resource):
         'employee_id': (str, None),
         'name': (str, None),
         'college': (str, None),
-        'roles': (str, None),
+        'roles': (list, None),
     }, location='json')
     def put(self, user, data):
         _id = data.get('id')
@@ -173,7 +179,8 @@ class UserInfo(Resource):
         if password:
             if not re.match(PASSWORD_PATTERN, password):
                 raise BadRequestException(
-                    'Password should be 8-16 characters, at least one uppercase letter, one lowercase letter and one number')
+                    'Password should be 8-16 characters, at least one uppercase letter, '
+                    'one lowercase letter and one number')
             user.password = password
         if phone:
             user.phone = phone
@@ -198,6 +205,7 @@ class UserInfo(Resource):
             'data': user.dict()
         }
 
+    @user_namespace.doc(description='Delete user')
     @has_role('admin')
     @validate_args({
         'id': (str, ...),
@@ -215,4 +223,97 @@ class UserInfo(Resource):
             'code': 200,
             'message': 'ok',
             'data': {}
+        }
+
+
+@user_namespace.route('/list', methods=['GET'])
+class UserList(Resource):
+    @user_namespace.doc(description='Get user list')
+    @has_role('admin')
+    @validate_args({
+        'page': (int, 1),
+        'per_page': (int, 10),
+        'username': (str, None),
+        'phone': (str, None),
+        'email': (str, None),
+        'employee_id': (str, None),
+        'name': (str, None),
+        'college': (str, None),
+        'roles': (str, None),
+    }, location='query')
+    def get(self, user, data):
+        def filterUser(x):
+            del x.password
+            del x.salt
+            return x.dict()
+
+        page = data.get('page')
+        if page < 1: page = 1
+        per_page = data.get('per_page')
+        if per_page < 1 or per_page > 100: per_page = 10
+        username = data.get('username')
+        phone = data.get('phone')
+        email = data.get('email')
+        employee_id = data.get('employee_id')
+        name = data.get('name')
+        college = data.get('college')
+        roles = data.get('roles')
+
+        query = {}
+        if username:
+            query['username'] = {'$regex': username}
+        if phone:
+            query['phone'] = {'$regex': phone}
+        if email:
+            query['email'] = {'$regex': email}
+        if employee_id:
+            query['employee_id'] = {'$regex': employee_id}
+        if name:
+            query['name'] = {'$regex': name}
+        if college:
+            query['college'] = {'$regex': college}
+        if roles:
+            query['roles'] = roles
+
+        users = [filterUser(x) for x in User.query(query, per_page, (page - 1) * per_page)]
+
+        return {
+            'code': 200,
+            'message': 'ok',
+            'data': {
+                'list': users,
+                'total': len(users),
+                'has_next': len(users) == per_page,
+            }
+        }
+
+
+@user_namespace.route('/token', methods=['PUT'])
+class Token(Resource):
+    @user_namespace.doc(description='Get a new token')
+    @need_login
+    def put(self, user):
+        token = generate_token(user)
+        resp = APIUserResponseSchema(username=user.username,
+                                     token=token.pack(),
+                                     expire=token.exp)
+        return {
+            'code': 200,
+            'message': 'ok',
+            'data': resp.dict()
+        }
+
+
+@user_namespace.route('/me', methods=['GET'])
+class Me(Resource):
+    @user_namespace.doc(description='Get current user info')
+    @has_role('admin')
+    def get(self, user):
+        del user.password
+        del user.salt
+
+        return {
+            'code': 200,
+            'message': 'ok',
+            'data': user.dict()
         }

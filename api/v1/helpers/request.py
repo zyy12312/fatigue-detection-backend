@@ -43,7 +43,11 @@ def validate_args(spec, location):
             data = ARG_LOCATIONS[location]()
             try:
                 # Try to load data according to pydantic spec
-                loaded = spec(**data).dict(exclude_unset=True)
+                preloaded = spec(**data).dict()
+                loaded = {}
+                for k, v in preloaded.items():
+                    if v is not None:
+                        loaded[k] = v
             except ValidationError as e:
                 # Handle reporting errors when invalid
                 resp = {}

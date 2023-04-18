@@ -9,12 +9,15 @@ Describe:
 
 from flask_restx import Namespace, Resource
 
-from api import APIHttpErrorResponseSchema
+from . import APIHttpErrorResponseSchema
 
-status_namespace = Namespace('status', description='Status')
+status_namespace = Namespace(path='/status', name="Status", description='API Status')
 
 
 @status_namespace.route('')
+@status_namespace.doc(
+    description='Get API Status',
+)
 class Status(Resource):
     def get(self):
         resp = APIHttpErrorResponseSchema()

@@ -50,3 +50,28 @@ class ForbiddenException(BaseServiceException):
 class BadRequestException(BaseServiceException):
     def __init__(self, message='Bad request', code=400):
         super().__init__(message, code)
+
+
+class CourseNotFoundException(BaseServiceException):
+    def __init__(self, message='Course not found', code=404):
+        super().__init__(message, code)
+
+
+class CourseAlreadyExistsException(BaseServiceException):
+    def __init__(self, message='Course already exists', code=400):
+        super().__init__(message, code)
+
+
+class CourseAlreadyJoinedException(BaseServiceException):
+    def __init__(self, message='The user have already joined this course', code=400):
+        super().__init__(message, code)
+
+
+class CourseSelectionNotFoundException(BaseServiceException):
+    def __init__(self, message='Course selection not found', code=404):
+        super().__init__(message, code)
+
+
+class CourseRecordNotFoundException(BaseServiceException):
+    def __init__(self, message='Course record not found', code=404):
+        super().__init__(message, code)

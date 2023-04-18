@@ -24,7 +24,7 @@ def generate_password(password, salt):
 
 
 def verify_password(password, salt, hashed_password):
-    return generate_password(password, salt) == generate_password(hashed_password, salt)
+    return password == generate_password(hashed_password, salt)
 
 
 def generate_token(user: User):
