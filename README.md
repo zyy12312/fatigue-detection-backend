@@ -1,5 +1,5 @@
-A networked classroom student monitoring platform based on facial recognition fatigue detection technology. It is designed to address many challenges and issues faced by online education, particularly the lack of face-to-face supervision, leading to problems such as lack of concentration and fatigue among students in online classrooms.
+A fatigue detection technology based on facial recognition, implemented as an online learning student status monitoring platform. The platform aims to address numerous challenges and issues faced by online education, particularly the lack of face-to-face supervision, leading to problems such as students easily experiencing lack of concentration and fatigue in virtual classrooms.
 
-Core Technologies: HTML (HyperText Markup Language), CSS (Cascading Style Sheets), JS (JavaScript), Python, MongoDB, Redis.
+Core technologies: HTML (HyperText Markup Language), CSS (Cascading Style Sheets), JS (JavaScript), Python, MongoDB, Redis.
 
 This repository contains the server code for the system.
